@@ -27,336 +27,286 @@ import java.io.*;
 
 public class hipda {
 
-	private String url;
+    private String url;
 
-	URL hipdaURL;
-	String today;
+    URL hipdaURL;
+    String today;
 
-	hipda(String today) {
+    hipda(String today) {
 
-		try {
-			hipdaURL = new URL("http://www.hi-pda.com/forum/index.php");
-			this.today = today;
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+        try {
+            hipdaURL = new URL("http://www.hi-pda.com/forum/index.php");
+            this.today = today;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
-	}
+    }
 
-	/**
-	 * Use this method to login and get cookies
-	 * 
-	 * @return cookies
-	 * @throws Exception
-	 */
-	public List login() throws Exception {
-		// make form to post
-		Map<String, String> map = new HashMap<String, String>();
-		map.put("formhash", "1d41a5ce");
-		map.put("referer", "http,//www.hi-pda.com/forum/index.php");
-		map.put("loginfield", "username");
-		// USE YOUR OWN USER NAME
-		map.put("username", "");
-		// USE YOUR OWN USER PASSWORD, U CAN GET IT THROUGH CAPTURE POST DATA
-		// WHEN U LOGIN ON CHROME
-		map.put("password", "");
-		map.put("questionid", "0");
-		map.put("answer", "");
-		map.put("loginsubmit", "true");
-		map.put("cookietime", "2592000");
+    /**
+     * Use this method to get the content in Discovery
+     *
+     * @param cookielist
+     * @param pagenum:which page u want to
+     * @return
+     * @throws Exception
+     */
+    public String requestDiscoveryContent(List<String> cookielist, int pagenum) throws Exception {
 
-		// encode map to string
-		StringBuffer params = new StringBuffer();
-		Iterator it = map.entrySet().iterator();
-		while (it.hasNext()) {
-			Map.Entry element = (Map.Entry) it.next();
-			params.append(element.getKey());
-			params.append("=");
-			params.append(element.getValue());
-			params.append("&");
-		}
-		if (params.length() > 0) {
-			params.deleteCharAt(params.length() - 1);
-		}
-		URL hipdaURL = new URL("http://www.hi-pda.com/forum/logging.php?action=login&loginsubmit=yes&inajax=1");
-		HttpURLConnection hipdaURLConnection = (HttpURLConnection) hipdaURL.openConnection();
-		// post
-		hipdaURLConnection.setDoOutput(true);
-		hipdaURLConnection.setDoInput(true);
-		PrintWriter printWriter = new PrintWriter(hipdaURLConnection.getOutputStream());
-		printWriter.write(params.toString());
-		printWriter.flush();
+        URL url = new URL("http://www.hi-pda.com/forum/forumdisplay.php?fid=2&page=" + pagenum);
+        HttpURLConnection huc = (HttpURLConnection) url.openConnection();
 
-		List<String> cookielist = hipdaURLConnection.getHeaderFields().get("Set-Cookie");
+        // add cookie to request
+        for (String cookie : cookielist) {
+            huc.setRequestProperty("Cookie", cookie.split(";", 2)[0]);
+        }
 
-		return cookielist;
-	}
+        huc.connect();
+        String line = null;
+        StringBuilder content = new StringBuilder();
+        InputStream in = new GZIPInputStream(huc.getInputStream());
+        BufferedReader bufw = new BufferedReader(new InputStreamReader(in, "gbk"));
+        StringBuilder writeContent = new StringBuilder();
+        int count = 0;
+        while ((line = bufw.readLine()) != null) {
+            String temp = null;
+            Pattern titlePattern = Pattern.compile(" <span id=\"thread_(.*)span>");
+            Matcher title = titlePattern.matcher(line.toString().subSequence(0, line.length()));
 
-	/**
-	 * Use this method to get the content in Discovery
-	 * 
-	 * @param cookielist
-	 * @param pagenum:which
-	 *            page u want to
-	 * @return
-	 * @throws Exception
-	 */
-	public String requestDiscoveryContent(List<String> cookielist, int pagenum) throws Exception {
+            Pattern numsPattern = Pattern.compile("<td class=\"nums\"><str(.*)td>");
+            Matcher nums = numsPattern.matcher(line.toString().subSequence(0, line.length()));
 
-		URL url = new URL("http://www.hi-pda.com/forum/forumdisplay.php?fid=2&page=" + pagenum);
-		HttpURLConnection huc = (HttpURLConnection) url.openConnection();
+            Pattern datePattern = Pattern.compile("<em>20(.*)em>");
+            Matcher date = datePattern.matcher(line.toString().subSequence(0, line.length()));
 
-		// add cookie to request
-		for (String cookie : cookielist) {
-			huc.setRequestProperty("Cookie", cookie.split(";", 2)[0]);
-		}
+            if (title.matches() == true) {
+                //Delate the invalid XML character in title
+                writeContent = writeContent.append(title.group().replaceAll("[\\x00-\\x08\\x0b-\\x0c\\x0e-\\x1f]", ""));
 
-		huc.connect();
-		String line = null;
-		StringBuilder content = new StringBuilder();
-		InputStream in = new GZIPInputStream(huc.getInputStream());
-		BufferedReader bufw = new BufferedReader(new InputStreamReader(in, "gbk"));
-		StringBuilder writeContent = new StringBuilder();
-		int count = 0;
-		while ((line = bufw.readLine()) != null) {
-			String temp = null;
-			Pattern titlePattern = Pattern.compile(" <span id=\"thread_(.*)span>");
-			Matcher title = titlePattern.matcher(line.toString().subSequence(0, line.length()));
+            }
+            if (nums.matches() == true) {
+                temp = nums.group();
 
-			Pattern numsPattern = Pattern.compile("<td class=\"nums\"><str(.*)td>");
-			Matcher nums = numsPattern.matcher(line.toString().subSequence(0, line.length()));
+                temp = temp.replaceAll("strong", "reply");
+                temp = temp.replaceAll("em", "hit");
+                temp = temp.replaceAll("<td class=\"nums\">", "");
+                temp = temp.replaceAll("</td>", "");
+                int i = temp.indexOf('/');
+                int j = temp.lastIndexOf('/');
 
-			Pattern datePattern = Pattern.compile("<em>20(.*)em>");
-			Matcher date = datePattern.matcher(line.toString().subSequence(0, line.length()));
+                writeContent = writeContent.insert(writeContent.length() - 7, temp);
+                writeContent.append("\r\n");
+            }
+            if (date.matches() == true) {
+                temp = date.group();
+                temp = temp.replaceAll("em", "date");
+                writeContent = writeContent.insert(writeContent.length() - 7, temp);
+            }
 
-			if (title.matches() == true) {
-				//Delate the invalid XML character in title
-				writeContent = writeContent.append(title.group().replaceAll("[\\x00-\\x08\\x0b-\\x0c\\x0e-\\x1f]", ""));
+            content.append(line + "\r\n");
+        }
 
-			}
-			if (nums.matches() == true) {
-				temp = nums.group();
+        return writeContent.toString();
 
-				temp = temp.replaceAll("strong", "reply");
-				temp = temp.replaceAll("em", "hit");
-				temp = temp.replaceAll("<td class=\"nums\">", "");
-				temp = temp.replaceAll("</td>", "");
-				int i = temp.indexOf('/');
-				int j = temp.lastIndexOf('/');
+    }
 
-				writeContent = writeContent.insert(writeContent.length() - 7, temp);
-				writeContent.append("\r\n");
-			}
-			if (date.matches() == true) {
-				temp = date.group();
-				temp = temp.replaceAll("em", "date");
-				writeContent = writeContent.insert(writeContent.length() - 7, temp);
-			}
+    /**
+     * Use this method to save data to xml file
+     *
+     * @param FilePath
+     * @param pages
+     * @param hipda
+     * @throws Exception
+     */
 
-			content.append(line + "\r\n");
-		}
+    public void writeDiscoveryToXml(String FilePath, int pages, hipda hipda) throws Exception {
+        Writer fw = null;
 
-		return writeContent.toString();
+        try {
+            FileOutputStream fos = new FileOutputStream(FilePath);
+            fw = new OutputStreamWriter(fos, "UTF-8");
+            fw.write("<?xml version=\"1.0\" encoding=\"utf-8\"?>" + "\r\n");
+            fw.write("<discovery>" + "\r\n");
+            for (int i = 1; i <= pages; i++) {
+                System.out.println("Writting page " + i);
+                fw.write(hipda.requestDiscoveryContent(hipda.login(), i));
+            }
+            fw.write("</discovery>" + "\r\n");
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            fw.close();
+        }
+    }
 
-	}
+    /**
+     * Use this method to post the topTen to specific Thread
+     *
+     * @param cookielist
+     * @param content
+     * @throws Exception
+     */
 
-	/**
-	 * Use this method to save data to xml file
-	 * 
-	 * @param FilePath
-	 * @param pages
-	 * @param hipda
-	 * @throws Exception
-	 */
+    public void postData(List<String> cookielist, String content) throws Exception {
 
-	public void writeDiscoveryToXml(String FilePath, int pages, hipda hipda) throws Exception {
-		Writer fw = null;
-
-		try {
-			FileOutputStream fos = new FileOutputStream(FilePath);
-			fw = new OutputStreamWriter(fos, "UTF-8");
-			fw.write("<?xml version=\"1.0\" encoding=\"utf-8\"?>" + "\r\n");
-			fw.write("<discovery>" + "\r\n");
-			for (int i = 1; i <= pages; i++) {
-				System.out.println("Writting page " + i);
-				fw.write(hipda.requestDiscoveryContent(hipda.login(), i));
-			}
-			fw.write("</discovery>" + "\r\n");
-		} catch (Exception e) {
-			e.printStackTrace();
-		} finally {
-			fw.close();
-		}
-	}
-
-	/**
-	 * Use this method to post the topTen to specific Thread
-	 * 
-	 * @param cookielist
-	 * @param content
-	 * @throws Exception
-	 */
-
-	public void postData(List<String> cookielist, String content) throws Exception {
-
-		String formhash = null;
+        String formhash = null;
 //POSTURL 是目标发帖地址，改变其中的tid参数即可
-		URL posturl = new URL(
-				"http://www.hi-pda.com/forum/post.php?action=reply&fid=57&tid=1892471&extra=&replysubmit=yes&infloat=yes&handlekey=fastpost&inajax=1");
-		HttpURLConnection huc = (HttpURLConnection) posturl.openConnection();
+        URL posturl = new URL(
+                "http://www.hi-pda.com/forum/post.php?action=reply&fid=57&tid=1892471&extra=&replysubmit=yes&infloat=yes&handlekey=fastpost&inajax=1");
+        HttpURLConnection huc = (HttpURLConnection) posturl.openConnection();
 
-		URL getFormHash = new URL("http://www.hi-pda.com/forum/viewthread.php?tid=1892286&extra=page%3D1");
-		HttpURLConnection huc1 = (HttpURLConnection) getFormHash.openConnection();
+        URL getFormHash = new URL("http://www.hi-pda.com/forum/viewthread.php?tid=1892286&extra=page%3D1");
+        HttpURLConnection huc1 = (HttpURLConnection) getFormHash.openConnection();
 
-		// add cookie to request
-		for (String cookie : cookielist) {
-			huc.setRequestProperty("Cookie", cookie.split(";", 2)[0]);
-			huc1.setRequestProperty("Cookie", cookie.split(";", 2)[0]);
-		}
+        // add cookie to request
+        for (String cookie : cookielist) {
+            huc.setRequestProperty("Cookie", cookie.split(";", 2)[0]);
+            huc1.setRequestProperty("Cookie", cookie.split(";", 2)[0]);
+        }
 
-		huc1.connect();
-		String line = null;
-		InputStream in = new GZIPInputStream(huc1.getInputStream());
-		BufferedReader bufw = new BufferedReader(new InputStreamReader(in, "gbk"));
-		while ((line = bufw.readLine()) != null) {
-			// System.out.println(line);
+        huc1.connect();
+        String line = null;
+        InputStream in = new GZIPInputStream(huc1.getInputStream());
+        BufferedReader bufw = new BufferedReader(new InputStreamReader(in, "gbk"));
+        while ((line = bufw.readLine()) != null) {
+            // System.out.println(line);
 
-			Pattern formHashPattern = Pattern.compile("^<a href=\"lo(.*)");
-			Matcher formHash = formHashPattern.matcher(line);
-			if (formHash.matches() == true) {
-				line = formHash.group(0);
-				System.out.println("..........Getting formhash..........");
-				line = line.replaceAll("<a href=\"logging\\.php\\?action=logout\\&amp;formhash=", "");
-				line = line.replaceAll("\">退出</a>", "");
-				formhash = line;
-			}
-		}
+            Pattern formHashPattern = Pattern.compile("^<a href=\"lo(.*)");
+            Matcher formHash = formHashPattern.matcher(line);
+            if (formHash.matches() == true) {
+                line = formHash.group(0);
+                System.out.println("..........Getting formhash..........");
+                line = line.replaceAll("<a href=\"logging\\.php\\?action=logout\\&amp;formhash=", "");
+                line = line.replaceAll("\">退出</a>", "");
+                formhash = line;
+            }
+        }
 
-		Map<String, String> map = new LinkedHashMap<String, String>();
-		map.put("formhash", formhash);
-		map.put("subject", "");
-		map.put("usesig", "0");
-		map.put("message", content);
+        Map<String, String> map = new LinkedHashMap<String, String>();
+        map.put("formhash", formhash);
+        map.put("subject", "");
+        map.put("usesig", "0");
+        map.put("message", content);
 
-		// encode map to string
-		StringBuffer params = new StringBuffer();
-		Iterator it = map.entrySet().iterator();
-		while (it.hasNext()) {
-			Map.Entry element = (Map.Entry) it.next();
-			params.append(element.getKey());
-			params.append("=");
-			params.append(java.net.URLEncoder.encode(element.getValue().toString(), "GBK"));
-			params.append("&");
-		}
-		if (params.length() > 0) {
-			params.deleteCharAt(params.length() - 1);
-		}
+        // encode map to string
+        StringBuffer params = new StringBuffer();
+        Iterator it = map.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry element = (Map.Entry) it.next();
+            params.append(element.getKey());
+            params.append("=");
+            params.append(java.net.URLEncoder.encode(element.getValue().toString(), "GBK"));
+            params.append("&");
+        }
+        if (params.length() > 0) {
+            params.deleteCharAt(params.length() - 1);
+        }
 
-		huc.setDoOutput(true);
-		huc.setDoInput(true);
-		huc.connect();
-		PrintWriter printWriter = new PrintWriter(huc.getOutputStream());
-		printWriter.write(params.toString());
-		printWriter.flush();
+        huc.setDoOutput(true);
+        huc.setDoInput(true);
+        huc.connect();
+        PrintWriter printWriter = new PrintWriter(huc.getOutputStream());
+        printWriter.write(params.toString());
+        printWriter.flush();
 
-		in = new GZIPInputStream(huc.getInputStream());
-		bufw = new BufferedReader(new InputStreamReader(in, "gbk"));
+        in = new GZIPInputStream(huc.getInputStream());
+        bufw = new BufferedReader(new InputStreamReader(in, "gbk"));
 
-		System.out.println(".........Success.........");
-	}
+        System.out.println(".........Success.........");
+    }
 
-	/**
-	 * Used to sort map from high to low
-	 * 
-	 * @param oldMap
-	 * @return
-	 */
+    /**
+     * Used to sort map from high to low
+     *
+     * @param oldMap
+     * @return
+     */
 
-	public static Map sortMap(Map oldMap) {
-		ArrayList<Map.Entry<String, Integer>> list = new ArrayList<Map.Entry<String, Integer>>(oldMap.entrySet());
-		Collections.sort(list, new Comparator<Map.Entry<String, Integer>>() {
+    public static Map sortMap(Map oldMap) {
+        ArrayList<Map.Entry<String, Integer>> list = new ArrayList<Map.Entry<String, Integer>>(oldMap.entrySet());
+        Collections.sort(list, new Comparator<Map.Entry<String, Integer>>() {
 
-			@Override
-			public int compare(Entry<java.lang.String, Integer> arg0, Entry<java.lang.String, Integer> arg1) {
-				return arg1.getValue() - arg0.getValue();
-			}
-		});
-		Map newMap = new LinkedHashMap();
-		for (int i = 0; i < list.size(); i++) {
-			newMap.put(list.get(i).getKey(), list.get(i).getValue());
-		}
-		return newMap;
-	}
+            @Override
+            public int compare(Entry<java.lang.String, Integer> arg0, Entry<java.lang.String, Integer> arg1) {
+                return arg1.getValue() - arg0.getValue();
+            }
+        });
+        Map newMap = new LinkedHashMap();
+        for (int i = 0; i < list.size(); i++) {
+            newMap.put(list.get(i).getKey(), list.get(i).getValue());
+        }
+        return newMap;
+    }
 
-	/**
-	 * Handle the xml file, and get the top ten file
-	 * 
-	 * @param FilePath
-	 * @return
-	 * @throws Exception
-	 */
+    /**
+     * Handle the xml file, and get the top ten file
+     *
+     * @param FilePath
+     * @return
+     * @throws Exception
+     */
 
-	public String getTopTen(String FilePath) throws Exception {
-		DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
-		// 文档解析器
-		DocumentBuilder db = dbf.newDocumentBuilder();
+    public String getTopTen(String FilePath) throws Exception {
+        DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+        // 文档解析器
+        DocumentBuilder db = dbf.newDocumentBuilder();
 
-		Document document = db.parse(FilePath);
-		Element e = document.getDocumentElement();
+        Document document = db.parse(FilePath);
+        Element e = document.getDocumentElement();
 
-		NodeList nl = e.getElementsByTagName("span");
-		Map<String, Integer> topTen = new LinkedHashMap<String, Integer>();
+        NodeList nl = e.getElementsByTagName("span");
+        Map<String, Integer> topTen = new LinkedHashMap<String, Integer>();
 
-		for (int i = 0; i < nl.getLength(); i++) {
-			NodeList nl2 = nl.item(i).getChildNodes();
-			if (nl2.item(1).getTextContent().equals(this.today)) {
-				topTen.put(nl.item(i).getAttributes().item(0).getTextContent(),
-						new Integer(nl2.item(2).getTextContent()));
-			}
+        for (int i = 0; i < nl.getLength(); i++) {
+            NodeList nl2 = nl.item(i).getChildNodes();
+            if (nl2.item(1).getTextContent().equals(this.today)) {
+                topTen.put(nl.item(i).getAttributes().item(0).getTextContent(),
+                        new Integer(nl2.item(2).getTextContent()));
+            }
 
-		}
-		System.out.println(".........Sorting.........");
-		topTen = sortMap(topTen);
+        }
+        System.out.println(".........Sorting.........");
+        topTen = sortMap(topTen);
 
-		// Get sorted thread(from high to low)
-		Collection<String> topTenThread = null;
-		topTenThread = topTen.keySet();
-		String[] topTenThreadArr = topTenThread.toArray(new String[0]);
+        // Get sorted thread(from high to low)
+        Collection<String> topTenThread = null;
+        topTenThread = topTen.keySet();
+        String[] topTenThreadArr = topTenThread.toArray(new String[0]);
 
-		StringBuilder postContent = new StringBuilder();
-		postContent.append("[size=5][color=#0000ff]" + this.today + "Top ten[/color][/size]" + "\r\n" + "\r\n");
-		for (int j = 0; j < 10; j++) {
-			for (int i = 0; i < nl.getLength(); i++) {
-				NodeList nl2 = nl.item(i).getChildNodes();
-				if (topTenThreadArr[j].equals(nl.item(i).getAttributes().item(0).getTextContent())) {
-					String temp = nl.item(i).getAttributes().item(0).getTextContent();// TITLE
-					temp = temp.replaceAll("thread_", "");
-					postContent
-							.append("[url=http://www.hi-pda.com/forum/viewthread.php?tid=" + temp + "&extra=page%3D1]");// url
-					postContent.append(nl2.item(0).getTextContent() + "[/url]" + "\r\n");// title
-					postContent.append("回复数： " + nl2.item(2).getTextContent() + "\r\n" + "\r\n");
-				}
-			}
-		}
+        StringBuilder postContent = new StringBuilder();
+        postContent.append("[size=5][color=#0000ff]" + this.today + "Top ten[/color][/size]" + "\r\n" + "\r\n");
+        for (int j = 0; j < 10; j++) {
+            for (int i = 0; i < nl.getLength(); i++) {
+                NodeList nl2 = nl.item(i).getChildNodes();
+                if (topTenThreadArr[j].equals(nl.item(i).getAttributes().item(0).getTextContent())) {
+                    String temp = nl.item(i).getAttributes().item(0).getTextContent();// TITLE
+                    temp = temp.replaceAll("thread_", "");
+                    postContent
+                            .append("[url=http://www.hi-pda.com/forum/viewthread.php?tid=" + temp + "&extra=page%3D1]");// url
+                    postContent.append(nl2.item(0).getTextContent() + "[/url]" + "\r\n");// title
+                    postContent.append("回复数： " + nl2.item(2).getTextContent() + "\r\n" + "\r\n");
+                }
+            }
+        }
 
-		return postContent.toString();
-	}
+        return postContent.toString();
+    }
 
 }
 
 class hipdaDemo {
-	public static void main(String[] args) {
+    public static void main(String[] args) {
 
-		hipda test = new hipda("2016-6-24");
-		try {
+        hipda test = new hipda("2016-6-24");
+        try {
 
-			test.writeDiscoveryToXml("test.xml", 10, test);
+            test.writeDiscoveryToXml("test.xml", 10, test);
 
-			test.postData(test.login(), test.getTopTen("test.xml"));
-			// test.login();
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-	}
+            test.postData(test.login(), test.getTopTen("test.xml"));
+            // test.login();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
 }
